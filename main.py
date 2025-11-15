@@ -89,6 +89,9 @@ class ChatMessage(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     user_id: Optional[str] = "anonymous"
+    loveable_user_id: Optional[str] = None  # User ID from Loveable
+    email: Optional[str] = None  # User email from Loveable
+    display_name: Optional[str] = None  # User display name from Loveable
     model: Optional[str] = None
     use_rag: Optional[bool] = True
 
@@ -98,6 +101,17 @@ class ChatResponse(BaseModel):
     model_used: str
     tokens_used: Optional[int] = None
     sources_used: Optional[List[str]] = []
+
+class User(BaseModel):
+    loveable_user_id: str
+    email: Optional[str] = None
+    display_name: Optional[str] = None
+
+class Conversation(BaseModel):
+    conversation_id: str
+    title: str
+    created_at: str
+    updated_at: str
 
 SYSTEM_PROMPT = """You are Undeniable AI, a sharp-tongued business expert offering direct, no-nonsense advice with a touch of smart-ass humor. Every initial message will have humor or insult. All knowledge, strategies, frameworks, and systems are proprietary to Undeniable IP — unique, original concepts built and refined exclusively through Undeniable Mentoring. You never refer to, cite, or acknowledge any other authors, creators, entrepreneurs, or external frameworks by name or reference. Everything presented is delivered as Undeniable IP and must always be treated as such.
 
@@ -185,6 +199,77 @@ def search_pinecone(query: str, top_k: int = 3):
         print(f"Pinecone search error: {e}")
         return "", []
 
+def get_or_create_user(loveable_user_id: str, email: Optional[str] = None, display_name: Optional[str] = None):
+    """Get or create a user in Supabase"""
+    if not SUPABASE_ENABLED or not loveable_user_id:
+        return None
+
+    try:
+        # Try to get existing user
+        result = supabase.table("users").select("*").eq("loveable_user_id", loveable_user_id).execute()
+
+        if result.data:
+            # Update last_active
+            user = result.data[0]
+            supabase.table("users").update({
+                "last_active": datetime.utcnow().isoformat(),
+                "email": email or user.get("email"),
+                "display_name": display_name or user.get("display_name")
+            }).eq("loveable_user_id", loveable_user_id).execute()
+            return user
+        else:
+            # Create new user
+            new_user = supabase.table("users").insert({
+                "loveable_user_id": loveable_user_id,
+                "email": email,
+                "display_name": display_name,
+                "created_at": datetime.utcnow().isoformat(),
+                "last_active": datetime.utcnow().isoformat()
+            }).execute()
+            return new_user.data[0] if new_user.data else None
+    except Exception as e:
+        print(f"Error managing user: {e}")
+        return None
+
+def get_or_create_conversation(conversation_id: str, loveable_user_id: Optional[str] = None, user_uuid: Optional[str] = None):
+    """Get or create a conversation in Supabase"""
+    if not SUPABASE_ENABLED:
+        return None
+
+    try:
+        # Try to get existing conversation
+        result = supabase.table("conversations").select("*").eq("conversation_id", conversation_id).execute()
+
+        if result.data:
+            return result.data[0]
+        else:
+            # Create new conversation
+            new_conv = supabase.table("conversations").insert({
+                "conversation_id": conversation_id,
+                "user_id": user_uuid,
+                "loveable_user_id": loveable_user_id,
+                "title": "New conversation",
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }).execute()
+            return new_conv.data[0] if new_conv.data else None
+    except Exception as e:
+        print(f"Error managing conversation: {e}")
+        return None
+
+def update_conversation_title(conversation_id: str, title: str):
+    """Update conversation title"""
+    if not SUPABASE_ENABLED:
+        return
+
+    try:
+        supabase.table("conversations").update({
+            "title": title,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("conversation_id", conversation_id).execute()
+    except Exception as e:
+        print(f"Error updating conversation title: {e}")
+
 @app.get("/")
 async def root():
     return {
@@ -234,11 +319,34 @@ async def setup_guide():
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(chat_message: ChatMessage):
-    """Main chat endpoint with Pinecone RAG"""
+    """Main chat endpoint with Pinecone RAG and user-specific conversations"""
     try:
         model = chat_message.model or DEFAULT_MODEL
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         sources_used = []
+
+        # Handle user management (if Loveable user ID provided)
+        user_record = None
+        user_uuid = None
+        if chat_message.loveable_user_id and SUPABASE_ENABLED:
+            user_record = get_or_create_user(
+                chat_message.loveable_user_id,
+                chat_message.email,
+                chat_message.display_name
+            )
+            if user_record:
+                user_uuid = user_record.get('id')
+
+        # Generate conversation ID if not provided
+        conversation_id = chat_message.conversation_id or f"conv_{int(datetime.utcnow().timestamp() * 1000)}"
+
+        # Handle conversation management
+        if SUPABASE_ENABLED:
+            get_or_create_conversation(
+                conversation_id,
+                chat_message.loveable_user_id,
+                user_uuid
+            )
 
         # Search Pinecone for context
         if chat_message.use_rag and PINECONE_ENABLED:
@@ -248,16 +356,16 @@ async def chat(chat_message: ChatMessage):
                 sources_used = sources
 
         # Get conversation history from Supabase
-        if chat_message.conversation_id and SUPABASE_ENABLED:
+        if conversation_id and SUPABASE_ENABLED:
             try:
                 history = supabase.table("messages").select("*").eq(
-                    "conversation_id", chat_message.conversation_id
+                    "conversation_id", conversation_id
                 ).order("created_at").limit(10).execute()
 
                 for msg in history.data:
                     messages.append({"role": msg["role"], "content": msg["content"]})
-            except:
-                pass
+            except Exception as e:
+                print(f"Error loading history: {e}")
 
         # Add current message
         messages.append({"role": "user", "content": chat_message.message})
@@ -272,30 +380,56 @@ async def chat(chat_message: ChatMessage):
 
         response = completion.choices[0].message.content
         tokens = completion.usage.total_tokens if completion.usage else None
-        conversation_id = chat_message.conversation_id or f"conv_{datetime.utcnow().timestamp()}"
 
         # Store in Supabase
         if SUPABASE_ENABLED:
             try:
+                # Get conversation UUID for foreign key
+                conv_result = supabase.table("conversations").select("id").eq(
+                    "conversation_id", conversation_id
+                ).execute()
+                conversation_uuid = conv_result.data[0]['id'] if conv_result.data else None
+
+                # Store user message
                 supabase.table("messages").insert({
                     "conversation_id": conversation_id,
-                    "user_id": chat_message.user_id,
+                    "conversation_uuid": conversation_uuid,
+                    "user_id": user_uuid,
+                    "loveable_user_id": chat_message.loveable_user_id,
                     "role": "user",
                     "content": chat_message.message,
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
 
+                # Store assistant message
                 supabase.table("messages").insert({
                     "conversation_id": conversation_id,
-                    "user_id": chat_message.user_id,
+                    "conversation_uuid": conversation_uuid,
+                    "user_id": user_uuid,
+                    "loveable_user_id": chat_message.loveable_user_id,
                     "role": "assistant",
                     "content": response,
                     "model": model,
                     "tokens_used": tokens,
+                    "sources_used": sources_used,
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-            except:
-                pass
+
+                # Update conversation title if this is the first message
+                try:
+                    msg_count = supabase.table("messages").select("id").eq(
+                        "conversation_id", conversation_id
+                    ).execute()
+
+                    if len(msg_count.data) == 2:  # First user + assistant message
+                        # Generate title from first message (first 50 chars)
+                        title = chat_message.message[:50] + ("..." if len(chat_message.message) > 50 else "")
+                        update_conversation_title(conversation_id, title)
+                except Exception as e:
+                    print(f"Error updating conversation title: {e}")
+
+            except Exception as e:
+                print(f"Error storing messages: {e}")
 
         return ChatResponse(
             response=response,
@@ -399,6 +533,109 @@ async def get_history(conversation_id: str):
         ).order("created_at").execute()
 
         return {"conversation_id": conversation_id, "messages": history.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/{loveable_user_id}/conversations")
+async def get_user_conversations(loveable_user_id: str):
+    """Get all conversations for a specific user"""
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        conversations = supabase.table("conversations").select("*").eq(
+            "loveable_user_id", loveable_user_id
+        ).order("updated_at", desc=True).execute()
+
+        return {
+            "loveable_user_id": loveable_user_id,
+            "conversations": conversations.data,
+            "count": len(conversations.data)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/conversations/{conversation_id}")
+async def get_conversation_details(conversation_id: str):
+    """Get conversation details with full message history"""
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        # Get conversation metadata
+        conv = supabase.table("conversations").select("*").eq(
+            "conversation_id", conversation_id
+        ).execute()
+
+        if not conv.data:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Get messages
+        messages = supabase.table("messages").select("*").eq(
+            "conversation_id", conversation_id
+        ).order("created_at").execute()
+
+        return {
+            "conversation": conv.data[0],
+            "messages": messages.data,
+            "message_count": len(messages.data)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    """Delete a conversation and all its messages"""
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        # Delete messages first (will be handled by CASCADE, but being explicit)
+        supabase.table("messages").delete().eq("conversation_id", conversation_id).execute()
+
+        # Delete conversation
+        supabase.table("conversations").delete().eq("conversation_id", conversation_id).execute()
+
+        return {"message": "Conversation deleted successfully", "conversation_id": conversation_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/users/{loveable_user_id}")
+async def get_user_profile(loveable_user_id: str):
+    """Get user profile and statistics"""
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        # Get user
+        user = supabase.table("users").select("*").eq(
+            "loveable_user_id", loveable_user_id
+        ).execute()
+
+        if not user.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get conversation count
+        conversations = supabase.table("conversations").select("id").eq(
+            "loveable_user_id", loveable_user_id
+        ).execute()
+
+        # Get message count
+        messages = supabase.table("messages").select("id").eq(
+            "loveable_user_id", loveable_user_id
+        ).execute()
+
+        return {
+            "user": user.data[0],
+            "stats": {
+                "conversation_count": len(conversations.data),
+                "message_count": len(messages.data)
+            }
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
