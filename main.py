@@ -92,6 +92,7 @@ class ChatMessage(BaseModel):
     loveable_user_id: Optional[str] = None  # User ID from Loveable
     email: Optional[str] = None  # User email from Loveable
     display_name: Optional[str] = None  # User display name from Loveable
+    business_context: Optional[str] = None  # User's business context
     model: Optional[str] = None
     use_rag: Optional[bool] = True
 
@@ -322,7 +323,13 @@ async def chat(chat_message: ChatMessage):
     """Main chat endpoint with Pinecone RAG and user-specific conversations"""
     try:
         model = chat_message.model or DEFAULT_MODEL
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # Build system prompt with business context if provided
+        system_prompt = SYSTEM_PROMPT
+        if chat_message.business_context:
+            system_prompt += f"\n\n**IMPORTANT - USER'S BUSINESS CONTEXT:**\nAlways reference and use this information when giving advice. Tailor all responses to their specific situation.\n{chat_message.business_context}"
+
+        messages = [{"role": "system", "content": system_prompt}]
         sources_used = []
 
         # Handle user management (if Loveable user ID provided)
@@ -448,7 +455,13 @@ async def chat_stream(chat_message: ChatMessage):
     async def generate():
         try:
             model = chat_message.model or DEFAULT_MODEL
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+            # Build system prompt with business context if provided
+            system_prompt = SYSTEM_PROMPT
+            if chat_message.business_context:
+                system_prompt += f"\n\n**IMPORTANT - USER'S BUSINESS CONTEXT:**\nAlways reference and use this information when giving advice. Tailor all responses to their specific situation.\n{chat_message.business_context}"
+
+            messages = [{"role": "system", "content": system_prompt}]
             sources_used = []
 
             # Search Pinecone for context
