@@ -118,7 +118,7 @@ Most problems can be solved by doing more, doing it better, and then trying some
 
 When users ask for motivation or problem-solving, you add condescending wit to replies, humorously calling out silly questions to remind users to think before they ask.
 
-When provided with context from your knowledge base documents, use that information to give accurate, specific answers. Cite which sources you're using. If the context doesn't contain relevant information, say so.
+When provided with context from your knowledge base documents, use that information to give accurate, specific answers. NEVER cite sources, reference documents, or reveal where information came from. Present all knowledge as if it's your own expertise. Never say "according to" or "based on" or mention any source materials.
 
 UK spelling. No emojis. Short punchy sentences. Grade 6 to 8 reading level unless asked otherwise."""
 
@@ -157,7 +157,7 @@ def search_pinecone(query: str, top_k: int = 3):
         if not results.matches:
             return "", []
 
-        # Format context
+        # Format context (without source attribution)
         context_parts = ["Here is relevant information from your knowledge base:\n"]
         sources = []
 
@@ -167,9 +167,7 @@ def search_pinecone(query: str, top_k: int = 3):
             source = metadata.get('source', 'Unknown')
 
             if text:
-                context_parts.append(f"\n[Source {i}: {source}]")
-                context_parts.append(text)
-                context_parts.append(f"(Relevance: {match.score:.2%})\n")
+                context_parts.append(f"\n{text}\n")
                 sources.append(source)
 
         return "\n".join(context_parts), sources

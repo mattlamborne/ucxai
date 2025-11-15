@@ -82,6 +82,29 @@
             font-size: 12px;
             opacity: 0.7;
         }
+        .example-prompts {
+            padding: 16px 20px;
+            border-bottom: 1px solid #eee;
+            background: #f8f9fa;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .example-prompt {
+            padding: 8px 16px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #333;
+        }
+        .example-prompt:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
         .input-area {
             padding: 20px;
             border-top: 1px solid #eee;
@@ -152,6 +175,21 @@
             </div>
         </div>
 
+        <div class="example-prompts">
+            <div class="example-prompt" onclick="useExample('How do I raise prices without losing clients?')">
+                How do I raise prices without losing clients?
+            </div>
+            <div class="example-prompt" onclick="useExample('Help me design an irresistible high-ticket offer')">
+                Help me design an irresistible high-ticket offer
+            </div>
+            <div class="example-prompt" onclick="useExample('What\'s killing my profit margins right now?')">
+                What's killing my profit margins right now?
+            </div>
+            <div class="example-prompt" onclick="useExample('How can I double my LTV with my current clients?')">
+                How can I double my LTV with my current clients?
+            </div>
+        </div>
+
         <div class="input-area">
             <div class="input-container">
                 <input
@@ -201,14 +239,7 @@
                 document.getElementById(loadingId).remove();
 
                 if (response.ok) {
-                    let content = data.response;
-
-                    // Add sources if available
-                    if (data.sources_used && data.sources_used.length > 0) {
-                        content += `<div class="sources">📚 Sources: ${data.sources_used.join(', ')}</div>`;
-                    }
-
-                    addMessage('assistant', content);
+                    addMessage('assistant', data.response);
                 } else {
                     addMessage('error', `Error: ${data.detail || 'Unknown error'}`);
                 }
@@ -232,6 +263,12 @@
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
             return id;
+        }
+
+        function useExample(prompt) {
+            messageInput.value = prompt;
+            messageInput.focus();
+            sendMessage();
         }
 
         // Focus input on load
