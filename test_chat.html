@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Undeniable AI Chatbot Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -76,6 +77,38 @@
             background: #fee;
             border: 1px solid #fcc;
             color: #c00;
+        }
+        /* Markdown styling */
+        .message-content p {
+            margin: 0 0 12px 0;
+        }
+        .message-content p:last-child {
+            margin-bottom: 0;
+        }
+        .message-content strong {
+            font-weight: 600;
+            color: #667eea;
+        }
+        .message.user .message-content strong {
+            color: white;
+        }
+        .message-content ul, .message-content ol {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .message-content li {
+            margin: 4px 0;
+        }
+        .message-content code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .message-content h1, .message-content h2, .message-content h3 {
+            margin: 12px 0 8px 0;
+            font-weight: 600;
         }
         .sources {
             margin-top: 8px;
@@ -257,8 +290,15 @@
             const id = 'msg-' + Date.now();
             messageDiv.id = id;
             messageDiv.className = `message ${type}`;
+
+            // Parse markdown for assistant messages
+            let displayContent = content;
+            if (type === 'assistant' && !content.includes('<div class="loading">')) {
+                displayContent = marked.parse(content);
+            }
+
             messageDiv.innerHTML = `
-                <div class="message-content">${content}</div>
+                <div class="message-content">${displayContent}</div>
             `;
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
