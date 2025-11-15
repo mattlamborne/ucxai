@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UCX AI Chat Widget</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        #chat-widget-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        #chat-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 123, 255, 0.4);
+            transition: transform 0.2s;
+        }
+
+        #chat-button:hover {
+            transform: scale(1.1);
+        }
+
+        #chat-window {
+            display: none;
+            width: 380px;
+            height: 600px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        #chat-window.open {
+            display: flex;
+        }
+
+        #chat-header {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        #chat-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .header-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .header-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .header-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        #messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            background: #f8f9fa;
+        }
+
+        #welcome-message {
+            text-align: center;
+            color: #6c757d;
+            padding: 20px;
+            font-size: 14px;
+        }
+
+        .message {
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            max-width: 80%;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .user-message {
+            background: #007bff;
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+
+        .assistant-message {
+            background: white;
+            color: #212529;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: #6c757d;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-indicator span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-indicator span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+
+        #input-container {
+            display: flex;
+            padding: 16px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        #message-input {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            font-size: 14px;
+            outline: none;
+            margin-right: 8px;
+        }
+
+        #message-input:focus {
+            border-color: #007bff;
+        }
+
+        #send-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #007bff;
+            color: white;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        #send-button:hover:not(:disabled) {
+            background: #0056b3;
+        }
+
+        #send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 480px) {
+            #chat-window {
+                width: 100vw !important;
+                height: 100vh !important;
+                border-radius: 0 !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-widget-container">
+        <button id="chat-button" aria-label="Open chat">💬</button>
+        <div id="chat-window">
+            <div id="chat-header">
+                <div id="chat-title">UCX AI Assistant</div>
+                <div class="header-buttons">
+                    <button class="header-btn" id="clear-button">🔄</button>
+                    <button class="header-btn" id="close-button">✕</button>
+                </div>
+            </div>
+            <div id="messages-container">
+                <div id="welcome-message">👋 Hi! How can I help you today?</div>
+            </div>
+            <form id="input-container">
+                <input
+                    type="text"
+                    id="message-input"
+                    placeholder="Type your message..."
+                    autocomplete="off"
+                />
+                <button type="submit" id="send-button">➤</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - CHANGE THIS TO YOUR API URL
+        const API_URL = 'http://localhost:8000'; // Update this!
+
+        let messages = [];
+        let conversationId = null;
+        let isLoading = false;
+
+        // DOM Elements
+        const chatButton = document.getElementById('chat-button');
+        const chatWindow = document.getElementById('chat-window');
+        const closeButton = document.getElementById('close-button');
+        const clearButton = document.getElementById('clear-button');
+        const messagesContainer = document.getElementById('messages-container');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const inputContainer = document.getElementById('input-container');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+
+        // Event Listeners
+        chatButton.addEventListener('click', () => {
+            chatWindow.classList.add('open');
+            chatButton.style.display = 'none';
+            messageInput.focus();
+        });
+
+        closeButton.addEventListener('click', () => {
+            chatWindow.classList.remove('open');
+            chatButton.style.display = 'block';
+        });
+
+        clearButton.addEventListener('click', () => {
+            messages = [];
+            conversationId = null;
+            renderMessages();
+        });
+
+        inputContainer.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await sendMessage();
+        });
+
+        // Functions
+        async function sendMessage() {
+            const text = messageInput.value.trim();
+            if (!text || isLoading) return;
+
+            // Add user message
+            messages.push({ role: 'user', content: text });
+            messageInput.value = '';
+            renderMessages();
+
+            // Set loading state
+            isLoading = true;
+            sendButton.disabled = true;
+            showTypingIndicator();
+
+            try {
+                const response = await fetch(`${API_URL}/api/chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: text,
+                        conversation_id: conversationId,
+                    }),
+                });
+
+                if (!response.ok) throw new Error('Failed to send message');
+
+                const data = await response.json();
+
+                // Set conversation ID if first message
+                if (!conversationId) {
+                    conversationId = data.conversation_id;
+                }
+
+                // Add assistant message
+                messages.push({ role: 'assistant', content: data.response });
+            } catch (error) {
+                console.error('Error:', error);
+                messages.push({
+                    role: 'assistant',
+                    content: 'Sorry, I encountered an error. Please try again.'
+                });
+            } finally {
+                isLoading = false;
+                sendButton.disabled = false;
+                renderMessages();
+                messageInput.focus();
+            }
+        }
+
+        function renderMessages() {
+            if (messages.length === 0) {
+                messagesContainer.innerHTML = '<div id="welcome-message">👋 Hi! How can I help you today?</div>';
+            } else {
+                messagesContainer.innerHTML = messages.map(msg => {
+                    const className = msg.role === 'user' ? 'user-message' : 'assistant-message';
+                    return `<div class="message ${className}">${escapeHtml(msg.content)}</div>`;
+                }).join('');
+            }
+            scrollToBottom();
+        }
+
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message assistant-message';
+            typingDiv.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            typingDiv.id = 'typing-indicator';
+            messagesContainer.appendChild(typingDiv);
+            scrollToBottom();
+        }
+
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
