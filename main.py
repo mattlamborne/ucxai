@@ -5,6 +5,7 @@ Upload docs to Pinecone, get smart AI responses
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
@@ -306,6 +307,85 @@ async def chat(chat_message: ChatMessage):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/chat/stream")
+async def chat_stream(chat_message: ChatMessage):
+    """Streaming chat endpoint - returns word by word"""
+    async def generate():
+        try:
+            model = chat_message.model or DEFAULT_MODEL
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            sources_used = []
+
+            # Search Pinecone for context
+            if chat_message.use_rag and PINECONE_ENABLED:
+                context, sources = search_pinecone(chat_message.message, top_k=3)
+                if context:
+                    messages.append({"role": "system", "content": context})
+                    sources_used = sources
+
+            # Get conversation history from Supabase
+            if chat_message.conversation_id and SUPABASE_ENABLED:
+                try:
+                    history = supabase.table("messages").select("*").eq(
+                        "conversation_id", chat_message.conversation_id
+                    ).order("created_at").limit(10).execute()
+
+                    for msg in history.data:
+                        messages.append({"role": msg["role"], "content": msg["content"]})
+                except:
+                    pass
+
+            # Add current message
+            messages.append({"role": "user", "content": chat_message.message})
+
+            # Call AI with streaming
+            stream = ai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1024,
+                stream=True
+            )
+
+            full_response = ""
+            for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield f"data: {content}\n\n"
+
+            # Send done signal
+            yield "data: [DONE]\n\n"
+
+            # Store in Supabase after completion
+            conversation_id = chat_message.conversation_id or f"conv_{datetime.utcnow().timestamp()}"
+            if SUPABASE_ENABLED:
+                try:
+                    supabase.table("messages").insert({
+                        "conversation_id": conversation_id,
+                        "user_id": chat_message.user_id,
+                        "role": "user",
+                        "content": chat_message.message,
+                        "created_at": datetime.utcnow().isoformat()
+                    }).execute()
+
+                    supabase.table("messages").insert({
+                        "conversation_id": conversation_id,
+                        "user_id": chat_message.user_id,
+                        "role": "assistant",
+                        "content": full_response,
+                        "model": model,
+                        "created_at": datetime.utcnow().isoformat()
+                    }).execute()
+                except:
+                    pass
+
+        except Exception as e:
+            yield f"data: Error: {str(e)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/api/history/{conversation_id}")
 async def get_history(conversation_id: str):
