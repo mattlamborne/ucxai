@@ -107,10 +107,10 @@ def get_embedding(text: str) -> List[float]:
         # Fallback: return zeros if embedding fails
         return [0.0] * 1536
 
-def search_pinecone(query: str, top_k: int = 3) -> str:
+def search_pinecone(query: str, top_k: int = 3):
     """Search Pinecone for relevant documents"""
     if not PINECONE_ENABLED or not index:
-        return ""
+        return "", []
 
     try:
         # Get query embedding
@@ -124,7 +124,7 @@ def search_pinecone(query: str, top_k: int = 3) -> str:
         )
 
         if not results.matches:
-            return ""
+            return "", []
 
         # Format context
         context_parts = ["Here is relevant information from your knowledge base:\n"]
