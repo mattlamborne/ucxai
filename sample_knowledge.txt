@@ -1,0 +1,68 @@
+UCX AI Chatbot Information
+
+About UCX AI:
+UCX AI is a high-performance chatbot platform powered by Groq's Llama 3.3 70B model. It features Retrieval Augmented Generation (RAG) using Pinecone for intelligent document search and context-aware responses.
+
+Key Features:
+- Lightning-fast responses (0.5-2 seconds typical)
+- Pinecone RAG for document-based knowledge
+- Supabase integration for conversation history
+- Free tier using Groq API (14,400 requests/day)
+- Supports PDF, TXT, and Markdown document uploads
+- REST API for easy integration
+- CORS enabled for web embedding
+
+Technical Stack:
+- Backend: FastAPI (Python)
+- AI Model: Llama 3.3 70B via Groq
+- Vector Database: Pinecone (1536-dimensional embeddings)
+- Embeddings: OpenAI text-embedding-3-small
+- Chat History: Supabase PostgreSQL
+- Deployment: Railway
+- Supported File Formats: PDF, TXT, MD
+
+API Endpoints:
+- POST /api/chat - Send messages and get AI responses
+- GET /api/history/{conversation_id} - Retrieve conversation history
+- GET /health - Check system health status
+- GET /setup - View Pinecone setup instructions
+
+Cost Efficiency:
+The chatbot is extremely cost-effective:
+- Groq API: 100% free (14,400 requests/day)
+- Pinecone: Free tier (100K vectors)
+- OpenAI Embeddings: $0.02 per 1M tokens (typically < $0.01 per 100 documents)
+- Supabase: Free tier (500MB database, 2GB bandwidth)
+
+Response Time:
+Typical response times are between 0.5 to 3 seconds, significantly faster than traditional OpenAI API calls which can take 3-10 seconds.
+
+Use Cases:
+- Customer support automation
+- Internal knowledge base search
+- Documentation Q&A
+- Educational tutoring systems
+- Personal AI assistants
+- Research assistants
+
+How RAG Works:
+1. User asks a question
+2. Question is converted to an embedding vector
+3. Pinecone searches for similar content from uploaded documents
+4. Relevant chunks are retrieved and added to the AI context
+5. Llama 3.3 generates a response using both general knowledge and document context
+6. Sources are cited in the response
+
+Embedding Model:
+We use OpenAI's text-embedding-3-small model which:
+- Creates 1536-dimensional vectors
+- Costs $0.02 per 1M tokens
+- Provides excellent semantic search quality
+- Is compatible with Pinecone's serverless indexes
+
+Document Chunking:
+Documents are automatically split into 1000-character chunks with 200-character overlap to:
+- Maintain context across chunk boundaries
+- Optimize for embedding model token limits
+- Improve retrieval precision
+- Allow for more granular source attribution
