@@ -1,1 +1,1 @@
-web: python main_rag.py
+web: python main.py

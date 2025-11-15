@@ -1,7 +1,13 @@
+"""
+UCX AI Chatbot with Pinecone RAG
+Upload docs to Pinecone, get smart AI responses
+"""
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
+from pinecone import Pinecone, ServerlessSpec
 from supabase import create_client, Client
 import os
 from dotenv import load_dotenv
@@ -10,139 +16,241 @@ from datetime import datetime
 
 load_dotenv()
 
-app = FastAPI(title="UCX AI Chatbot API")
+app = FastAPI(title="UCX AI Chatbot with Pinecone RAG")
 
-# CORS Configuration
+# CORS
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins + ["*"],  # Remove "*" in production
+    allow_origins=origins + ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# AI Provider Configuration
-AI_PROVIDER = os.getenv("AI_PROVIDER", "deepseek").lower()  # deepseek, groq, or openai
+# AI Provider
+AI_PROVIDER = os.getenv("AI_PROVIDER", "groq").lower()
 
-# Initialize AI client based on provider
-if AI_PROVIDER == "deepseek":
-    ai_client = OpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com"
-    )
-    DEFAULT_MODEL = "deepseek-chat"
-elif AI_PROVIDER == "groq":
+if AI_PROVIDER == "groq":
     ai_client = OpenAI(
         api_key=os.getenv("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1"
     )
-    DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Updated model
-else:  # openai
+    DEFAULT_MODEL = "llama-3.3-70b-versatile"
+else:
     ai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     DEFAULT_MODEL = "gpt-4o-mini"
 
-# Initialize Supabase client (optional - gracefully handle errors)
+# Pinecone setup
+PINECONE_ENABLED = False
+try:
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    index_name = os.getenv("PINECONE_INDEX_NAME", "ucx-chatbot")
+
+    # Try to connect to index
+    try:
+        index = pc.Index(index_name)
+        PINECONE_ENABLED = True
+        print(f"✅ Connected to Pinecone index: {index_name}")
+    except:
+        print(f"⚠️  Pinecone index '{index_name}' not found. Create it at pinecone.io")
+        print("   Dimension: 1536, Metric: cosine")
+        index = None
+except Exception as e:
+    print(f"⚠️  Pinecone not configured: {e}")
+    index = None
+
+# Supabase for chat history
 try:
     supabase: Client = create_client(
         os.getenv("SUPABASE_URL"),
         os.getenv("SUPABASE_KEY")
     )
     SUPABASE_ENABLED = True
-except Exception as e:
-    print(f"⚠️  Supabase not available: {e}")
-    print("⚠️  Chat history will not be saved (API will still work!)")
+    print("✅ Supabase connected (chat history)")
+except:
     supabase = None
     SUPABASE_ENABLED = False
+
+# OpenAI for embeddings (lazy init - only when Pinecone is enabled)
+embedding_client = None
+if os.getenv("PINECONE_API_KEY"):
+    try:
+        # Only initialize if we have OpenAI key (Groq key won't work for embeddings)
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            embedding_client = OpenAI(api_key=openai_key)
+    except:
+        pass
 
 # Models
 class ChatMessage(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     user_id: Optional[str] = "anonymous"
-    model: Optional[str] = None  # Will use DEFAULT_MODEL if not specified
+    model: Optional[str] = None
+    use_rag: Optional[bool] = True
 
 class ChatResponse(BaseModel):
     response: str
     conversation_id: str
     model_used: str
     tokens_used: Optional[int] = None
+    sources_used: Optional[List[str]] = []
 
-class ConversationHistory(BaseModel):
-    conversation_id: str
-    messages: List[dict]
+SYSTEM_PROMPT = """You are a helpful AI assistant.
+When provided with context from documents, use that information to give accurate, specific answers.
+Always cite which sources you're using.
+If the context doesn't contain relevant information, say so."""
 
-# System prompt - customize this for your use case
-SYSTEM_PROMPT = """You are a helpful, friendly AI assistant.
-Be concise but informative. Provide clear and accurate responses."""
+def get_embedding(text: str) -> List[float]:
+    """Get embedding for text using OpenAI API (cheap!)"""
+    if not embedding_client:
+        # No embedding client available
+        return [0.0] * 1536
+
+    try:
+        response = embedding_client.embeddings.create(
+            input=text,
+            model="text-embedding-3-small"  # Cheap: $0.02 per 1M tokens
+        )
+        return response.data[0].embedding
+    except:
+        # Fallback: return zeros if embedding fails
+        return [0.0] * 1536
+
+def search_pinecone(query: str, top_k: int = 3):
+    """Search Pinecone for relevant documents"""
+    if not PINECONE_ENABLED or not index:
+        return "", []
+
+    try:
+        # Get query embedding
+        query_embedding = get_embedding(query)
+
+        # Search Pinecone
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+
+        if not results.matches:
+            return "", []
+
+        # Format context
+        context_parts = ["Here is relevant information from your knowledge base:\n"]
+        sources = []
+
+        for i, match in enumerate(results.matches, 1):
+            metadata = match.metadata
+            text = metadata.get('text', '')
+            source = metadata.get('source', 'Unknown')
+
+            if text:
+                context_parts.append(f"\n[Source {i}: {source}]")
+                context_parts.append(text)
+                context_parts.append(f"(Relevance: {match.score:.2%})\n")
+                sources.append(source)
+
+        return "\n".join(context_parts), sources
+
+    except Exception as e:
+        print(f"Pinecone search error: {e}")
+        return "", []
 
 @app.get("/")
 async def root():
     return {
-        "message": "UCX AI Chatbot API",
+        "message": "UCX AI Chatbot with Pinecone RAG",
         "status": "running",
         "provider": AI_PROVIDER,
         "default_model": DEFAULT_MODEL,
+        "pinecone_enabled": PINECONE_ENABLED,
+        "pinecone_index": os.getenv("PINECONE_INDEX_NAME", "ucx-chatbot"),
         "endpoints": {
             "chat": "/api/chat",
             "health": "/health",
-            "history": "/api/history/{conversation_id}"
+            "setup": "/setup"
         }
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {
+        "status": "healthy",
+        "pinecone": PINECONE_ENABLED,
+        "supabase": SUPABASE_ENABLED
+    }
+
+@app.get("/setup")
+async def setup_guide():
+    """Instructions for setting up Pinecone"""
+    return {
+        "message": "Pinecone Setup Instructions",
+        "steps": [
+            "1. Go to https://www.pinecone.io and sign up (free)",
+            "2. Create a new index:",
+            f"   - Name: {os.getenv('PINECONE_INDEX_NAME', 'ucx-chatbot')}",
+            "   - Dimension: 1536",
+            "   - Metric: cosine",
+            "   - Cloud: AWS, Region: us-east-1",
+            "3. Go to API Keys and copy your key",
+            "4. Add to Railway environment variables:",
+            "   - PINECONE_API_KEY=your_key_here",
+            f"   - PINECONE_INDEX_NAME={os.getenv('PINECONE_INDEX_NAME', 'ucx-chatbot')}",
+            "5. Redeploy your app",
+            "6. Upload documents via Pinecone dashboard or API"
+        ],
+        "upload_docs": "https://docs.pinecone.io/guides/data/upload-data",
+        "current_status": "Connected" if PINECONE_ENABLED else "Not configured"
+    }
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(chat_message: ChatMessage):
-    """
-    Main chat endpoint - sends message to AI provider (DeepSeek/Groq/OpenAI) and stores in Supabase
-    """
+    """Main chat endpoint with Pinecone RAG"""
     try:
-        # Use default model if not specified
         model = chat_message.model or DEFAULT_MODEL
-
-        # Get conversation history if conversation_id exists
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        sources_used = []
 
+        # Search Pinecone for context
+        if chat_message.use_rag and PINECONE_ENABLED:
+            context, sources = search_pinecone(chat_message.message, top_k=3)
+            if context:
+                messages.append({"role": "system", "content": context})
+                sources_used = sources
+
+        # Get conversation history from Supabase
         if chat_message.conversation_id and SUPABASE_ENABLED:
-            # Fetch previous messages from Supabase
-            history_response = supabase.table("messages").select("*").eq(
-                "conversation_id", chat_message.conversation_id
-            ).order("created_at").execute()
+            try:
+                history = supabase.table("messages").select("*").eq(
+                    "conversation_id", chat_message.conversation_id
+                ).order("created_at").limit(10).execute()
 
-            for msg in history_response.data:
-                messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
-                })
+                for msg in history.data:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+            except:
+                pass
 
-        # Add current user message
-        messages.append({
-            "role": "user",
-            "content": chat_message.message
-        })
+        # Add current message
+        messages.append({"role": "user", "content": chat_message.message})
 
-        # Call AI API (blazing fast!)
+        # Call AI
         completion = ai_client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=0.7,
-            max_tokens=1024,
-            stream=False
+            max_tokens=1024
         )
 
-        assistant_response = completion.choices[0].message.content
-        tokens_used = completion.usage.total_tokens if completion.usage else None
-
-        # Create or use existing conversation_id
+        response = completion.choices[0].message.content
+        tokens = completion.usage.total_tokens if completion.usage else None
         conversation_id = chat_message.conversation_id or f"conv_{datetime.utcnow().timestamp()}"
 
-        # Store messages in Supabase (if enabled)
+        # Store in Supabase
         if SUPABASE_ENABLED:
             try:
-                # Store user message
                 supabase.table("messages").insert({
                     "conversation_id": conversation_id,
                     "user_id": chat_message.user_id,
@@ -151,67 +259,49 @@ async def chat(chat_message: ChatMessage):
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
 
-                # Store assistant response
                 supabase.table("messages").insert({
                     "conversation_id": conversation_id,
                     "user_id": chat_message.user_id,
                     "role": "assistant",
-                    "content": assistant_response,
+                    "content": response,
                     "model": model,
-                    "tokens_used": tokens_used,
+                    "tokens_used": tokens,
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
-            except Exception as db_error:
-                print(f"Database error (continuing anyway): {db_error}")
+            except:
+                pass
 
         return ChatResponse(
-            response=assistant_response,
+            response=response,
             conversation_id=conversation_id,
             model_used=model,
-            tokens_used=tokens_used
+            tokens_used=tokens,
+            sources_used=sources_used
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/history/{conversation_id}")
-async def get_conversation_history(conversation_id: str):
-    """
-    Retrieve conversation history from Supabase
-    """
+async def get_history(conversation_id: str):
+    """Get conversation history"""
     if not SUPABASE_ENABLED:
-        raise HTTPException(status_code=503, detail="Chat history not available (Supabase not configured)")
+        raise HTTPException(status_code=503, detail="Chat history not available")
 
     try:
-        response = supabase.table("messages").select("*").eq(
+        history = supabase.table("messages").select("*").eq(
             "conversation_id", conversation_id
         ).order("created_at").execute()
 
-        return {
-            "conversation_id": conversation_id,
-            "messages": response.data
-        }
+        return {"conversation_id": conversation_id, "messages": history.data}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching history: {str(e)}")
-
-@app.delete("/api/history/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    """
-    Delete a conversation and all its messages
-    """
-    if not SUPABASE_ENABLED:
-        raise HTTPException(status_code=503, detail="Chat history not available (Supabase not configured)")
-
-    try:
-        supabase.table("messages").delete().eq(
-            "conversation_id", conversation_id
-        ).execute()
-
-        return {"message": "Conversation deleted", "conversation_id": conversation_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting conversation: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
+    print("🚀 Starting UCX AI Chatbot with Pinecone RAG...")
+    print(f"🤖 AI Provider: {AI_PROVIDER}")
+    print(f"📚 Pinecone RAG: {'Enabled' if PINECONE_ENABLED else 'Disabled (configure PINECONE_API_KEY)'}")
+    print(f"💬 Chat History: {'Enabled' if SUPABASE_ENABLED else 'Disabled'}")
     uvicorn.run(app, host="0.0.0.0", port=port)
