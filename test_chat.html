@@ -378,7 +378,7 @@
     </div>
 
     <script>
-        const API_URL = 'https://ucxai-production.up.railway.app/api/chat/stream';
+        const API_URL = 'https://ucxai-production.up.railway.app/api/chat';
         const messagesContainer = document.getElementById('messages');
         const messageInput = document.getElementById('messageInput');
         const sendBtn = document.getElementById('sendBtn');
@@ -456,12 +456,8 @@
             messageInput.value = '';
             sendBtn.disabled = true;
 
-            // Create empty assistant message for streaming
-            const assistantId = addMessage('assistant', '', false);
-            const assistantElement = document.getElementById(assistantId);
-            const contentElement = assistantElement.querySelector('.message-content');
-
-            let fullResponse = '';
+            // Show loading
+            const loadingId = addMessage('assistant', '<div class="loading"></div>', false);
 
             try {
                 const response = await fetch(API_URL, {
@@ -475,49 +471,27 @@
                     })
                 });
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
+                const data = await response.json();
 
-                while (true) {
-                    const { value, done } = await reader.read();
-                    if (done) break;
+                // Remove loading
+                document.getElementById(loadingId).remove();
 
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
+                if (response.ok) {
+                    addMessage('assistant', data.response, true);
 
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
-                            if (data === '[DONE]') {
-                                // Stream complete
-                                break;
-                            }
-                            fullResponse += data;
-                            // Update content with markdown parsing
-                            contentElement.innerHTML = marked.parse(fullResponse);
-                            messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                        }
+                    // Update conversation title if it's the first message
+                    const conv = conversations[currentConversationId];
+                    if (conv.messages.length === 2) {
+                        conv.title = message.substring(0, 30) + (message.length > 30 ? '...' : '');
+                        saveConversations();
+                        loadConversations();
                     }
+                } else {
+                    addMessage('assistant', `Error: ${data.detail || 'Unknown error'}`, true);
                 }
-
-                // Save to conversation
-                conversations[currentConversationId].messages.push({
-                    role: 'assistant',
-                    content: fullResponse
-                });
-                conversations[currentConversationId].updatedAt = Date.now();
-                saveConversations();
-
-                // Update conversation title if it's the first message
-                const conv = conversations[currentConversationId];
-                if (conv.messages.length === 2) {
-                    conv.title = message.substring(0, 30) + (message.length > 30 ? '...' : '');
-                    saveConversations();
-                    loadConversations();
-                }
-
             } catch (error) {
-                contentElement.textContent = `Connection error: ${error.message}`;
+                document.getElementById(loadingId).remove();
+                addMessage('assistant', `Connection error: ${error.message}`, true);
             } finally {
                 sendBtn.disabled = false;
                 messageInput.focus();
