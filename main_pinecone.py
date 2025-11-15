@@ -72,8 +72,16 @@ except:
     supabase = None
     SUPABASE_ENABLED = False
 
-# OpenAI for embeddings (works with any API key)
-embedding_client = OpenAI(api_key=os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY"))
+# OpenAI for embeddings (lazy init - only when Pinecone is enabled)
+embedding_client = None
+if os.getenv("PINECONE_API_KEY"):
+    try:
+        # Only initialize if we have OpenAI key (Groq key won't work for embeddings)
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if openai_key:
+            embedding_client = OpenAI(api_key=openai_key)
+    except:
+        pass
 
 # Models
 class ChatMessage(BaseModel):
@@ -97,6 +105,10 @@ If the context doesn't contain relevant information, say so."""
 
 def get_embedding(text: str) -> List[float]:
     """Get embedding for text using OpenAI API (cheap!)"""
+    if not embedding_client:
+        # No embedding client available
+        return [0.0] * 1536
+
     try:
         response = embedding_client.embeddings.create(
             input=text,
