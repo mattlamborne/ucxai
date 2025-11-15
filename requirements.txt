@@ -5,10 +5,4 @@ supabase==2.7.4
 python-dotenv==1.0.0
 pydantic==2.5.0
 python-multipart==0.0.6
-
-# RAG / Document Processing (optional - only needed for main_rag.py)
-pypdf2==3.0.1
-python-docx==1.1.0
-markdown==3.5.1
-sentence-transformers==2.2.2
-numpy==1.24.3
+pinecone-client==3.0.0
