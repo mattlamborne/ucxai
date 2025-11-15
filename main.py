@@ -37,16 +37,23 @@ elif AI_PROVIDER == "groq":
         api_key=os.getenv("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1"
     )
-    DEFAULT_MODEL = "llama-3.1-70b-versatile"
+    DEFAULT_MODEL = "llama-3.3-70b-versatile"  # Updated model
 else:  # openai
     ai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     DEFAULT_MODEL = "gpt-4o-mini"
 
-# Initialize Supabase client
-supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_KEY")
-)
+# Initialize Supabase client (optional - gracefully handle errors)
+try:
+    supabase: Client = create_client(
+        os.getenv("SUPABASE_URL"),
+        os.getenv("SUPABASE_KEY")
+    )
+    SUPABASE_ENABLED = True
+except Exception as e:
+    print(f"⚠️  Supabase not available: {e}")
+    print("⚠️  Chat history will not be saved (API will still work!)")
+    supabase = None
+    SUPABASE_ENABLED = False
 
 # Models
 class ChatMessage(BaseModel):
@@ -99,7 +106,7 @@ async def chat(chat_message: ChatMessage):
         # Get conversation history if conversation_id exists
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-        if chat_message.conversation_id:
+        if chat_message.conversation_id and SUPABASE_ENABLED:
             # Fetch previous messages from Supabase
             history_response = supabase.table("messages").select("*").eq(
                 "conversation_id", chat_message.conversation_id
@@ -132,29 +139,30 @@ async def chat(chat_message: ChatMessage):
         # Create or use existing conversation_id
         conversation_id = chat_message.conversation_id or f"conv_{datetime.utcnow().timestamp()}"
 
-        # Store messages in Supabase
-        try:
-            # Store user message
-            supabase.table("messages").insert({
-                "conversation_id": conversation_id,
-                "user_id": chat_message.user_id,
-                "role": "user",
-                "content": chat_message.message,
-                "created_at": datetime.utcnow().isoformat()
-            }).execute()
+        # Store messages in Supabase (if enabled)
+        if SUPABASE_ENABLED:
+            try:
+                # Store user message
+                supabase.table("messages").insert({
+                    "conversation_id": conversation_id,
+                    "user_id": chat_message.user_id,
+                    "role": "user",
+                    "content": chat_message.message,
+                    "created_at": datetime.utcnow().isoformat()
+                }).execute()
 
-            # Store assistant response
-            supabase.table("messages").insert({
-                "conversation_id": conversation_id,
-                "user_id": chat_message.user_id,
-                "role": "assistant",
-                "content": assistant_response,
-                "model": model,
-                "tokens_used": tokens_used,
-                "created_at": datetime.utcnow().isoformat()
-            }).execute()
-        except Exception as db_error:
-            print(f"Database error (continuing anyway): {db_error}")
+                # Store assistant response
+                supabase.table("messages").insert({
+                    "conversation_id": conversation_id,
+                    "user_id": chat_message.user_id,
+                    "role": "assistant",
+                    "content": assistant_response,
+                    "model": model,
+                    "tokens_used": tokens_used,
+                    "created_at": datetime.utcnow().isoformat()
+                }).execute()
+            except Exception as db_error:
+                print(f"Database error (continuing anyway): {db_error}")
 
         return ChatResponse(
             response=assistant_response,
@@ -171,6 +179,9 @@ async def get_conversation_history(conversation_id: str):
     """
     Retrieve conversation history from Supabase
     """
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Chat history not available (Supabase not configured)")
+
     try:
         response = supabase.table("messages").select("*").eq(
             "conversation_id", conversation_id
@@ -188,6 +199,9 @@ async def delete_conversation(conversation_id: str):
     """
     Delete a conversation and all its messages
     """
+    if not SUPABASE_ENABLED:
+        raise HTTPException(status_code=503, detail="Chat history not available (Supabase not configured)")
+
     try:
         supabase.table("messages").delete().eq(
             "conversation_id", conversation_id
