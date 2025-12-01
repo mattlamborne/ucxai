@@ -105,12 +105,16 @@ export default function ChatWidget({
       const response = await fetch(`${apiUrl}/api/conversations/${conversationId}`);
       if (response.ok) {
         const data = await response.json();
-        const formattedMessages = data.messages.map((msg: any) => ({
-          role: msg.role,
-          content: msg.content,
-          timestamp: msg.created_at
-        }));
-        setMessages(formattedMessages);
+        if (data.messages && data.messages.length > 0) {
+          const formattedMessages = data.messages
+            .filter((msg: any) => msg.role !== 'system')
+            .map((msg: any) => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.created_at
+            }));
+          setMessages(formattedMessages);
+        }
       }
     } catch (error) {
       console.error('Error loading conversation:', error);

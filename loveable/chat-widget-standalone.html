@@ -363,7 +363,10 @@
 
         async function loadConversation(convId) {
             currentConversationId = convId;
-            messagesContainer.innerHTML = '';
+
+            // Clear messages but keep empty state
+            const messages = messagesContainer.querySelectorAll('.message');
+            messages.forEach(msg => msg.remove());
 
             try {
                 const response = await fetch(
@@ -392,7 +395,11 @@
 
         function newConversation() {
             currentConversationId = null;
-            messagesContainer.innerHTML = '';
+
+            // Clear messages but keep empty state
+            const messages = messagesContainer.querySelectorAll('.message');
+            messages.forEach(msg => msg.remove());
+
             emptyState.style.display = 'flex';
             renderConversationsList();
             messageInput.focus();
