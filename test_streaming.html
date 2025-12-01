@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Undeniable AI - Streaming Test</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #343541;
+            color: #ececf1;
+            padding: 40px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 32px;
+            margin-bottom: 32px;
+            text-align: center;
+            font-weight: 700;
+        }
+        .input-area {
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 16px;
+            background: #40414f;
+            border: 1px solid #565869;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 16px;
+            background: #5436DA;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 12px;
+            font-weight: 600;
+        }
+        button:hover { background: #6447E8; }
+        button:disabled {
+            background: #565869;
+            cursor: not-allowed;
+        }
+        .messages {
+            background: #444654;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 200px;
+        }
+        .status {
+            color: #19c37d;
+            font-style: italic;
+            margin-bottom: 12px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .response {
+            line-height: 1.7;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: #ff6b6b;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Undeniable AI - Streaming Demo</h1>
+
+        <div class="input-area">
+            <input
+                type="text"
+                id="messageInput"
+                placeholder="Ask a question..."
+                value="How do I increase my lead to booking rate"
+            />
+            <button onclick="sendMessage()" id="sendBtn">Send Message</button>
+        </div>
+
+        <div class="messages" id="messages">
+            <div style="color: #8e8ea0;">Enter a question and watch the AI think...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://ucxai-production.up.railway.app/api/chat/stream';
+        const messageInput = document.getElementById('messageInput');
+        const messagesDiv = document.getElementById('messages');
+        const sendBtn = document.getElementById('sendBtn');
+
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            sendBtn.disabled = true;
+            messagesDiv.innerHTML = '';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        loveable_user_id: 'demo_user_123',
+                        email: 'demo@example.com',
+                        display_name: 'Demo User',
+                        use_rag: true
+                    })
+                });
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let statusDiv = null;
+                let responseDiv = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+
+                            try {
+                                const parsed = JSON.parse(data);
+
+                                if (parsed.type === 'status') {
+                                    // Show status message
+                                    if (!statusDiv) {
+                                        statusDiv = document.createElement('div');
+                                        statusDiv.className = 'status';
+                                        messagesDiv.appendChild(statusDiv);
+                                    }
+                                    statusDiv.textContent = parsed.message;
+                                } else if (parsed.type === 'content_start') {
+                                    // Remove status and start showing response
+                                    if (statusDiv) {
+                                        statusDiv.remove();
+                                        statusDiv = null;
+                                    }
+                                    responseDiv = document.createElement('div');
+                                    responseDiv.className = 'response';
+                                    messagesDiv.appendChild(responseDiv);
+                                } else if (parsed.type === 'content') {
+                                    // Append content
+                                    if (responseDiv) {
+                                        responseDiv.textContent += parsed.message;
+                                    }
+                                } else if (parsed.type === 'done') {
+                                    // Finished
+                                    if (statusDiv) statusDiv.remove();
+                                } else if (parsed.type === 'error') {
+                                    messagesDiv.innerHTML = `<div class="error">Error: ${parsed.message}</div>`;
+                                }
+                            } catch (e) {
+                                // Not JSON, might be old format or error
+                                console.log('Non-JSON data:', data);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                messagesDiv.innerHTML = `<div class="error">Connection error: ${error.message}</div>`;
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

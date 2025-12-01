@@ -486,10 +486,17 @@ async def chat(chat_message: ChatMessage):
 
 @app.post("/api/chat/stream")
 async def chat_stream(chat_message: ChatMessage):
-    """Streaming chat endpoint - returns word by word"""
+    """Streaming chat endpoint with status messages - returns word by word"""
+    import asyncio
+    import json
+
     async def generate():
         try:
             model = chat_message.model or DEFAULT_MODEL
+
+            # Send searching status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Searching playbooks...'})}\n\n"
+            await asyncio.sleep(0.3)  # Brief pause for visual effect
 
             # Build system prompt with business context if provided
             system_prompt = SYSTEM_PROMPT
@@ -506,6 +513,10 @@ async def chat_stream(chat_message: ChatMessage):
                     messages.append({"role": "system", "content": context})
                     sources_used = sources
 
+            # Send accessing status
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Accessing call log...'})}\n\n"
+            await asyncio.sleep(0.3)  # Brief pause for visual effect
+
             # Get conversation history from Supabase
             if chat_message.conversation_id and SUPABASE_ENABLED:
                 try:
@@ -521,6 +532,9 @@ async def chat_stream(chat_message: ChatMessage):
             # Add current message
             messages.append({"role": "user", "content": chat_message.message})
 
+            # Send content start signal
+            yield f"data: {json.dumps({'type': 'content_start'})}\n\n"
+
             # Call AI with streaming
             stream = ai_client.chat.completions.create(
                 model=model,
@@ -535,18 +549,47 @@ async def chat_stream(chat_message: ChatMessage):
                 if chunk.choices[0].delta.content:
                     content = chunk.choices[0].delta.content
                     full_response += content
-                    yield f"data: {content}\n\n"
+                    yield f"data: {json.dumps({'type': 'content', 'message': content})}\n\n"
 
             # Send done signal
-            yield "data: [DONE]\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
             # Store in Supabase after completion
-            conversation_id = chat_message.conversation_id or f"conv_{datetime.utcnow().timestamp()}"
+            conversation_id = chat_message.conversation_id or f"conv_{int(datetime.utcnow().timestamp() * 1000)}"
+
+            # Handle user management
+            user_record = None
+            user_uuid = None
+            if chat_message.loveable_user_id and SUPABASE_ENABLED:
+                user_record = get_or_create_user(
+                    chat_message.loveable_user_id,
+                    chat_message.email,
+                    chat_message.display_name
+                )
+                if user_record:
+                    user_uuid = user_record.get('id')
+
+            # Handle conversation management
+            if SUPABASE_ENABLED:
+                get_or_create_conversation(
+                    conversation_id,
+                    chat_message.loveable_user_id,
+                    user_uuid
+                )
+
             if SUPABASE_ENABLED:
                 try:
+                    # Get conversation UUID for foreign key
+                    conv_result = supabase.table("conversations").select("id").eq(
+                        "conversation_id", conversation_id
+                    ).execute()
+                    conversation_uuid = conv_result.data[0]['id'] if conv_result.data else None
+
                     supabase.table("messages").insert({
                         "conversation_id": conversation_id,
-                        "user_id": chat_message.user_id,
+                        "conversation_uuid": conversation_uuid,
+                        "user_id": user_uuid,
+                        "loveable_user_id": chat_message.loveable_user_id,
                         "role": "user",
                         "content": chat_message.message,
                         "created_at": datetime.utcnow().isoformat()
@@ -554,18 +597,34 @@ async def chat_stream(chat_message: ChatMessage):
 
                     supabase.table("messages").insert({
                         "conversation_id": conversation_id,
-                        "user_id": chat_message.user_id,
+                        "conversation_uuid": conversation_uuid,
+                        "user_id": user_uuid,
+                        "loveable_user_id": chat_message.loveable_user_id,
                         "role": "assistant",
                         "content": full_response,
                         "model": model,
+                        "tokens_used": None,
+                        "sources_used": sources_used,
                         "created_at": datetime.utcnow().isoformat()
                     }).execute()
+
+                    # Update conversation title if this is the first message
+                    try:
+                        msg_count = supabase.table("messages").select("id").eq(
+                            "conversation_id", conversation_id
+                        ).execute()
+
+                        if len(msg_count.data) == 2:  # First user + assistant message
+                            title = chat_message.message[:50] + ("..." if len(chat_message.message) > 50 else "")
+                            update_conversation_title(conversation_id, title)
+                    except:
+                        pass
                 except:
                     pass
 
         except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
-            yield "data: [DONE]\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
