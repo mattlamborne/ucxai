@@ -494,9 +494,12 @@ async def chat_stream(chat_message: ChatMessage):
         try:
             model = chat_message.model or DEFAULT_MODEL
 
-            # Send searching status
+            # ALWAYS show these status messages when thinking
             yield f"data: {json.dumps({'type': 'status', 'message': 'Searching playbooks...'})}\n\n"
-            await asyncio.sleep(0.3)  # Brief pause for visual effect
+            await asyncio.sleep(0.5)  # Brief pause for visual effect
+
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Accessing call log...'})}\n\n"
+            await asyncio.sleep(0.5)  # Brief pause for visual effect
 
             # Build system prompt with business context if provided
             system_prompt = SYSTEM_PROMPT
@@ -512,10 +515,6 @@ async def chat_stream(chat_message: ChatMessage):
                 if context:
                     messages.append({"role": "system", "content": context})
                     sources_used = sources
-
-            # Send accessing status
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Accessing call log...'})}\n\n"
-            await asyncio.sleep(0.3)  # Brief pause for visual effect
 
             # Get conversation history from Supabase
             if chat_message.conversation_id and SUPABASE_ENABLED:
