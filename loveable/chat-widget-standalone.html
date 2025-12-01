@@ -79,7 +79,14 @@
             border-bottom: 1px solid #4d4d4f;
             color: white;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .chat-header img {
+            height: 28px;
+            width: auto;
         }
         .messages { flex: 1; overflow-y: auto; padding: 20px; }
         .message {
@@ -186,7 +193,12 @@
             color: #ececf1;
             text-align: center;
         }
-        .empty-state h1 { font-size: 32px; margin-bottom: 32px; }
+        .empty-state h1 { font-size: 32px; margin-bottom: 32px; font-weight: 700; }
+        .empty-state-logo {
+            width: 120px;
+            height: auto;
+            margin-bottom: 20px;
+        }
         .example-prompts {
             display: flex;
             flex-wrap: wrap;
@@ -225,10 +237,14 @@
 
         <!-- Main chat area -->
         <div class="main">
-            <div class="chat-header">Undeniable AI</div>
+            <div class="chat-header">
+                <img src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png" alt="Undeniable AI Logo">
+                Undeniable AI
+            </div>
 
             <div class="messages" id="messages">
                 <div class="empty-state" id="emptyState">
+                    <img src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png" alt="Undeniable AI Logo" class="empty-state-logo">
                     <h1>Undeniable AI</h1>
                     <div class="example-prompts">
                         <div class="example-prompt" onclick="useExample('How do I raise prices without losing clients')">

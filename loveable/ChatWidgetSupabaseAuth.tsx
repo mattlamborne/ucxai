@@ -297,13 +297,23 @@ export default function ChatWidget({
           >
             ☰
           </button>
-          <span className="font-medium">Undeniable AI</span>
+          <img
+            src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png"
+            alt="Undeniable AI Logo"
+            className="h-7 w-auto"
+          />
+          <span className="font-bold">Undeniable AI</span>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <h1 className="text-3xl mb-8">Undeniable AI</h1>
+              <img
+                src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png"
+                alt="Undeniable AI Logo"
+                className="w-30 h-auto mb-5"
+              />
+              <h1 className="text-3xl mb-8 font-bold">Undeniable AI</h1>
               <div className="flex flex-wrap gap-3 max-w-3xl">
                 {examplePrompts.map((prompt, i) => (
                   <div

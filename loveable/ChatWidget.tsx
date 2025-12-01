@@ -264,12 +264,22 @@ export default function ChatWidget({
               ☰
             </button>
           )}
+          <img
+            src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png"
+            alt="Undeniable AI Logo"
+            style={styles.chatHeaderLogo}
+          />
           <span>Undeniable AI</span>
         </div>
 
         <div style={styles.messages}>
           {messages.length === 0 && (
             <div style={styles.emptyState}>
+              <img
+                src="https://858114e0-c1d6-42de-9163-6c2b11b79735.lovableproject.com/src/assets/undai-logo.png"
+                alt="Undeniable AI Logo"
+                style={styles.emptyStateLogo}
+              />
               <h1 style={styles.emptyStateTitle}>Undeniable AI</h1>
               <div style={styles.examplePrompts}>
                 {examplePrompts.map((prompt, i) => (
@@ -445,10 +455,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '16px 20px',
     borderBottom: '1px solid #4d4d4f',
     fontSize: '14px',
-    fontWeight: 500,
+    fontWeight: 700,
     display: 'flex',
     alignItems: 'center',
     gap: '12px'
+  },
+  chatHeaderLogo: {
+    height: '28px',
+    width: 'auto'
   },
   toggleSidebar: {
     background: 'none',
@@ -507,7 +521,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   emptyStateTitle: {
     fontSize: '32px',
-    marginBottom: '32px'
+    marginBottom: '32px',
+    fontWeight: 700
+  },
+  emptyStateLogo: {
+    width: '120px',
+    height: 'auto',
+    marginBottom: '20px'
   },
   examplePrompts: {
     display: 'flex',
