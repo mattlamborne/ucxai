@@ -60,10 +60,10 @@ export default function ChatWidget({
 
   // Example prompts
   const examplePrompts = [
-    'How do i raise prices without losing clients',
+    'How do I raise prices without losing clients',
     'Help me design an irresistible high-ticket offer',
     "What's killing my profit margins right now?",
-    'How can i double my LTV with my current clients'
+    'How can I double my LTV with my current clients'
   ];
 
   // Load user conversations on mount
