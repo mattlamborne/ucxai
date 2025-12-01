@@ -122,6 +122,10 @@ export default function ChatWidget({
   };
 
   const newConversation = () => {
+    // Reload conversations first to ensure current chat is in sidebar
+    if (loveableUserId) {
+      loadUserConversations();
+    }
     setCurrentConversationId(null);
     setMessages([]);
   };

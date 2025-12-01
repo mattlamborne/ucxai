@@ -134,6 +134,10 @@ export default function ChatWidget({
   };
 
   const newConversation = () => {
+    // Reload conversations first to ensure current chat is in sidebar
+    if (user?.id) {
+      loadUserConversations();
+    }
     setCurrentConversationId(null);
     setMessages([]);
   };

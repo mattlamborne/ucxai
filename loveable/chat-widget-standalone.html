@@ -394,15 +394,18 @@
         }
 
         function newConversation() {
-            currentConversationId = null;
+            // Reload conversations first to ensure current chat is in sidebar
+            loadUserConversations().then(() => {
+                currentConversationId = null;
 
-            // Clear messages but keep empty state
-            const messages = messagesContainer.querySelectorAll('.message');
-            messages.forEach(msg => msg.remove());
+                // Clear messages but keep empty state
+                const messages = messagesContainer.querySelectorAll('.message');
+                messages.forEach(msg => msg.remove());
 
-            emptyState.style.display = 'flex';
-            renderConversationsList();
-            messageInput.focus();
+                emptyState.style.display = 'flex';
+                renderConversationsList();
+                messageInput.focus();
+            });
         }
 
         async function deleteConversation(convId, event) {
