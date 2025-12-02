@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug - Undeniable AI</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { margin-bottom: 20px; }
+        .section { background: #2a2a2a; padding: 20px; margin-bottom: 20px; border-radius: 8px; }
+        button {
+            padding: 12px 24px;
+            background: #5436DA;
+            border: none;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover { background: #6447E8; }
+        input {
+            padding: 12px;
+            background: #3a3a3a;
+            border: 1px solid #565869;
+            border-radius: 6px;
+            color: white;
+            width: 400px;
+            margin-right: 10px;
+        }
+        pre {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log { margin-top: 10px; font-size: 12px; color: #19c37d; }
+        .error { color: #ff6b6b; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Undeniable AI - Debug Panel</h1>
+
+        <div class="section">
+            <h2>1. Test User Endpoint</h2>
+            <p>Check if the user exists in Supabase</p>
+            <button onclick="testUserEndpoint()">Test Get User</button>
+            <button onclick="testConversationsEndpoint()">Test Get Conversations</button>
+            <div id="userResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>2. Send Test Message</h2>
+            <input type="text" id="testMessage" placeholder="Enter a test message" value="How do I increase revenue?">
+            <button onclick="sendTestMessage()">Send Message</button>
+            <div id="messageResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>3. Check Conversations</h2>
+            <button onclick="listConversations()">List All Conversations</button>
+            <div id="conversationsResult"></div>
+        </div>
+
+        <div class="section">
+            <h2>4. Debug Log</h2>
+            <div id="debugLog" style="font-size: 11px; color: #888;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://ucxai-production.up.railway.app';
+        const USER_ID = 'demo_user_123';
+        const USER_EMAIL = 'demo@example.com';
+        const USER_NAME = 'Demo User';
+
+        let currentConversationId = null;
+
+        function log(message, isError = false) {
+            const logDiv = document.getElementById('debugLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = isError ? '#ff6b6b' : '#19c37d';
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            console.log(message);
+        }
+
+        async function testUserEndpoint() {
+            log('Testing user endpoint...');
+            const resultDiv = document.getElementById('userResult');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${USER_ID}`);
+                const data = await response.json();
+
+                log(`Response status: ${response.status}`);
+                resultDiv.innerHTML = `<div class="log"><strong>User Data:</strong><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+            } catch (error) {
+                log(`ERROR: ${error.message}`, true);
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testConversationsEndpoint() {
+            log('Testing conversations endpoint...');
+            const resultDiv = document.getElementById('userResult');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${USER_ID}/conversations`);
+                const data = await response.json();
+
+                log(`Response status: ${response.status}`);
+                log(`Found ${data.count || 0} conversations`);
+                resultDiv.innerHTML = `<div class="log"><strong>Conversations:</strong><pre>${JSON.stringify(data, null, 2)}</pre></div>`;
+            } catch (error) {
+                log(`ERROR: ${error.message}`, true);
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function sendTestMessage() {
+            log('Sending test message...');
+            const message = document.getElementById('testMessage').value;
+            const resultDiv = document.getElementById('messageResult');
+
+            if (!message) {
+                alert('Please enter a message');
+                return;
+            }
+
+            resultDiv.innerHTML = '<div class="log">Sending...</div>';
+
+            try {
+                log(`Message: "${message}"`);
+                log(`Conversation ID: ${currentConversationId || 'NEW'}`);
+
+                const response = await fetch(`${API_BASE}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        conversation_id: currentConversationId,
+                        loveable_user_id: USER_ID,
+                        email: USER_EMAIL,
+                        display_name: USER_NAME,
+                        use_rag: true
+                    })
+                });
+
+                const data = await response.json();
+
+                log(`Response status: ${response.status}`);
+                log(`Conversation ID returned: ${data.conversation_id}`);
+
+                if (response.ok) {
+                    currentConversationId = data.conversation_id;
+                    resultDiv.innerHTML = `
+                        <div class="log">
+                            <strong>✅ Success!</strong><br>
+                            <strong>Conversation ID:</strong> ${data.conversation_id}<br>
+                            <strong>Model:</strong> ${data.model_used}<br>
+                            <strong>Response:</strong><pre>${data.response.substring(0, 200)}...</pre>
+                        </div>
+                    `;
+
+                    // Auto-refresh conversations list
+                    setTimeout(listConversations, 500);
+                } else {
+                    log(`ERROR: ${data.detail}`, true);
+                    resultDiv.innerHTML = `<div class="error">Error: ${data.detail}</div>`;
+                }
+            } catch (error) {
+                log(`ERROR: ${error.message}`, true);
+                resultDiv.innerHTML = `<div class="error">Connection error: ${error.message}</div>`;
+            }
+        }
+
+        async function listConversations() {
+            log('Fetching conversations list...');
+            const resultDiv = document.getElementById('conversationsResult');
+
+            try {
+                const response = await fetch(`${API_BASE}/api/users/${USER_ID}/conversations`);
+                const data = await response.json();
+
+                log(`Response status: ${response.status}`);
+                log(`Found ${data.count || 0} conversations`);
+
+                if (response.ok) {
+                    if (data.conversations && data.conversations.length > 0) {
+                        let html = `<div class="log"><strong>Found ${data.count} conversations:</strong><br><br>`;
+                        data.conversations.forEach((conv, i) => {
+                            html += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: #1a1a1a; border-radius: 4px;">
+                                    <strong>${i + 1}. ${conv.title}</strong><br>
+                                    <small>ID: ${conv.conversation_id}</small><br>
+                                    <small>Created: ${new Date(conv.created_at).toLocaleString()}</small><br>
+                                    <small>Updated: ${new Date(conv.updated_at).toLocaleString()}</small>
+                                </div>
+                            `;
+                        });
+                        html += '</div>';
+                        resultDiv.innerHTML = html;
+                    } else {
+                        resultDiv.innerHTML = '<div class="log">No conversations found.</div>';
+                    }
+                } else {
+                    log(`ERROR: ${data.detail}`, true);
+                    resultDiv.innerHTML = `<div class="error">Error: ${data.detail}</div>`;
+                }
+            } catch (error) {
+                log(`ERROR: ${error.message}`, true);
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Auto-test on load
+        log('Debug panel loaded');
+        log(`API Base: ${API_BASE}`);
+        log(`User ID: ${USER_ID}`);
+    </script>
+</body>
+</html>
