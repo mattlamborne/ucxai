@@ -5,7 +5,7 @@ Upload docs to Pinecone, get smart AI responses
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
@@ -339,9 +339,15 @@ async def root():
         "endpoints": {
             "chat": "/api/chat",
             "health": "/health",
-            "setup": "/setup"
+            "setup": "/setup",
+            "debug": "/debug"
         }
     }
+
+@app.get("/debug")
+async def debug_panel():
+    """Serve the debug panel"""
+    return FileResponse("test_debug.html")
 
 @app.get("/health")
 async def health_check():
