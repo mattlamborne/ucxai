@@ -366,38 +366,48 @@ async def root():
 @app.get("/debug")
 async def debug_panel():
     """Debug endpoint to test conversation saving"""
+    import traceback
+
+    response = {
+        "status": "Debug endpoint working",
+        "supabase_enabled": SUPABASE_ENABLED,
+        "pinecone_enabled": PINECONE_ENABLED,
+        "environment": {
+            "supabase_url": os.getenv("SUPABASE_URL", "NOT_SET")[:30] + "..." if os.getenv("SUPABASE_URL") else "NOT_SET",
+            "supabase_key_set": "YES" if os.getenv("SUPABASE_KEY") else "NO",
+            "ai_provider": AI_PROVIDER,
+            "default_model": DEFAULT_MODEL
+        }
+    }
+
     if not SUPABASE_ENABLED:
-        return {"error": "Supabase not enabled", "supabase_enabled": False}
+        response["warning"] = "Supabase not enabled - check environment variables"
+        return response
 
     try:
-        # Get all conversations to see what's in the database
-        all_convos = supabase.table("conversations").select("*").order("updated_at", desc=True).limit(10).execute()
+        # Try to query conversations
+        all_convos = supabase.table("conversations").select("conversation_id, title, loveable_user_id, created_at, updated_at").order("updated_at", desc=True).limit(5).execute()
 
-        # Get all users
-        all_users = supabase.table("users").select("loveable_user_id, email, created_at").limit(10).execute()
+        # Try to query users
+        all_users = supabase.table("users").select("loveable_user_id, email, created_at").limit(5).execute()
 
-        return {
-            "status": "Debug endpoint working",
-            "supabase_enabled": SUPABASE_ENABLED,
-            "pinecone_enabled": PINECONE_ENABLED,
-            "database_check": {
-                "recent_conversations": all_convos.data if all_convos.data else [],
-                "recent_users": all_users.data if all_users.data else [],
-                "conversation_count": len(all_convos.data) if all_convos.data else 0,
-                "user_count": len(all_users.data) if all_users.data else 0
-            },
-            "instructions": {
-                "test_user": "GET /api/users/{loveable_user_id}",
-                "test_conversations": "GET /api/users/{loveable_user_id}/conversations",
-                "example_user_id": "demo_user_123"
-            }
+        response["database_check"] = {
+            "status": "Connected successfully",
+            "recent_conversations": all_convos.data if all_convos.data else [],
+            "recent_users": all_users.data if all_users.data else [],
+            "conversation_count": len(all_convos.data) if all_convos.data else 0,
+            "user_count": len(all_users.data) if all_users.data else 0
         }
+
     except Exception as e:
-        return {
+        response["database_check"] = {
+            "status": "Error connecting to Supabase",
             "error": str(e),
-            "supabase_enabled": SUPABASE_ENABLED,
-            "status": "Error querying database"
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
         }
+
+    return response
 
 @app.get("/health")
 async def health_check():
