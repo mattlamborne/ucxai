@@ -365,8 +365,39 @@ async def root():
 
 @app.get("/debug")
 async def debug_panel():
-    """Serve the debug panel"""
-    return FileResponse("test_debug.html")
+    """Debug endpoint to test conversation saving"""
+    if not SUPABASE_ENABLED:
+        return {"error": "Supabase not enabled", "supabase_enabled": False}
+
+    try:
+        # Get all conversations to see what's in the database
+        all_convos = supabase.table("conversations").select("*").order("updated_at", desc=True).limit(10).execute()
+
+        # Get all users
+        all_users = supabase.table("users").select("loveable_user_id, email, created_at").limit(10).execute()
+
+        return {
+            "status": "Debug endpoint working",
+            "supabase_enabled": SUPABASE_ENABLED,
+            "pinecone_enabled": PINECONE_ENABLED,
+            "database_check": {
+                "recent_conversations": all_convos.data if all_convos.data else [],
+                "recent_users": all_users.data if all_users.data else [],
+                "conversation_count": len(all_convos.data) if all_convos.data else 0,
+                "user_count": len(all_users.data) if all_users.data else 0
+            },
+            "instructions": {
+                "test_user": "GET /api/users/{loveable_user_id}",
+                "test_conversations": "GET /api/users/{loveable_user_id}/conversations",
+                "example_user_id": "demo_user_123"
+            }
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "supabase_enabled": SUPABASE_ENABLED,
+            "status": "Error querying database"
+        }
 
 @app.get("/health")
 async def health_check():
@@ -403,6 +434,12 @@ async def setup_guide():
 async def chat(chat_message: ChatMessage):
     """Main chat endpoint with Pinecone RAG and user-specific conversations"""
     try:
+        # Debug logging
+        print(f"📩 Chat request received:")
+        print(f"   loveable_user_id: {chat_message.loveable_user_id}")
+        print(f"   conversation_id: {chat_message.conversation_id}")
+        print(f"   email: {chat_message.email}")
+
         model = chat_message.model or DEFAULT_MODEL
 
         # Build system prompt with business context if provided
