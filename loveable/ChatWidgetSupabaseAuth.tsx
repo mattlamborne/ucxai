@@ -180,9 +180,10 @@ export default function ChatWidget({
         // Update conversation ID if this was a new conversation
         if (!currentConversationId) {
           setCurrentConversationId(data.conversation_id);
-          // Reload conversations to update sidebar
-          setTimeout(loadUserConversations, 500);
         }
+
+        // Always reload conversations to update sidebar
+        setTimeout(loadUserConversations, 500);
       } else {
         const error = await response.json();
         toast({

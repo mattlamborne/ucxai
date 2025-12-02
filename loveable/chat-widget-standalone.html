@@ -469,8 +469,10 @@
                     // Update conversation ID if new
                     if (!currentConversationId) {
                         currentConversationId = data.conversation_id;
-                        setTimeout(loadUserConversations, 500);
                     }
+
+                    // Always refresh conversations list to update sidebar
+                    setTimeout(loadUserConversations, 500);
                 } else {
                     addMessage('assistant', `Error: ${data.detail || 'Unknown error'}`, false);
                 }
