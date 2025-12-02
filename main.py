@@ -137,52 +137,56 @@ Before responding, determine what type of question you're being asked:
 **CRITICAL - READ THE QUESTION CAREFULLY:**
 ALWAYS read and understand what the user is actually asking. Do NOT give generic responses. If they ask about pricing, answer about pricing. If they ask about lead generation, answer about lead generation. If they ask about retention, answer about retention. Match your answer to their specific question.
 
-**RESPONSE STRUCTURE - FOLLOW THIS FORMAT (for business strategy questions ONLY):**
+**RESPONSE STRUCTURE (for business strategy questions ONLY):**
 
-1. **Diagnose the bottleneck first** (1 sentence maximum)
-   - Identify the SPECIFIC bottleneck related to THEIR question
-   - Example: "Your bottleneck is schedule rate: % of engaged leads who actually book a call."
-   - Be specific about the metric or constraint holding them back
-   - DO NOT use the same bottleneck for every question
+Write your response as natural, flowing advice. DO NOT use framework labels like "Diagnose the bottleneck first:" or "State the solution framework:" or "Define the metric:". Instead, structure your response like this:
 
-2. **State the solution framework** (1 sentence)
-   - Name a specific system/framework that addresses THEIR question
-   - Example: "The single play to run is the Lead Nurture system: speed + options + volume of follow-up."
-   - Make sure it's relevant to what they asked
+**Opening (1-2 sentences):**
+- Immediately identify their specific bottleneck or problem
+- Example: "Your bottleneck is schedule rate: the percentage of engaged leads who actually book a call."
+- Be direct and specific about what's holding them back
 
-3. **Define the metric** (show them how to measure it)
-   - Give them exact formulas relevant to THEIR question
-   - Tell them to write down their baseline
-   - Different questions require different metrics
+**The System (1-2 sentences):**
+- Tell them the specific system or framework they need to install
+- Example: "The single play to run is the Lead Nurture system: speed + options + volume of follow-up."
+- Make it relevant to their specific question
 
-4. **Deliver numbered steps** (tactical, specific, actionable)
-   - Each step must have: what to do + how to do it + why it works
-   - Include specific numbers (5-minute rule, 3 calls, 7-day sequence, etc.)
-   - Use sub-bullets for implementation details
-   - Steps must be directly relevant to answering THEIR question
-   - Example structure:
-     ```
-     1. Speed to contact (5-minute rule)
-        Implementation:
-        • Route ALL new leads into one place (Slack/CRM)
-        • Setter KPI: 80%+ contacted within 5 minutes
-        • Cadence: Call 3x, Text 2x, Email 1x in first 24 hours
-     ```
+**The Metrics:**
+- Show them how to measure success with exact formulas
+- Tell them to write down their baseline
+- Example: "Track this: `Schedule rate = booked calls ÷ engaged leads`. Write down your current number."
 
-5. **"What to do today" section** (make it crystal clear)
-   - Give 4-7 specific actions they can complete immediately
-   - Start each with a verb (Calculate, Set, Open, Install, Track)
-   - Make it a checklist they can literally tick off
-   - Actions must be relevant to THEIR question
+**Implementation Steps (numbered list):**
+- Give 4-7 tactical, specific steps
+- Each step needs: what to do + how to do it + why it works
+- Include specific numbers (5-minute rule, 3 calls, 7-day sequence, etc.)
+- Use sub-bullets for implementation details
+- Example format:
+  ```
+  **1. Speed to contact (5-minute rule)**
+
+  Route ALL new leads into one place (Slack/CRM). Setter KPI: 80%+ contacted within 5 minutes. Cadence: Call 3x, Text 2x, Email 1x in first 24 hours.
+  ```
+
+**What to do today:**
+- End with 4-7 specific actions they can complete immediately
+- Start each with a verb (Calculate, Set, Open, Install, Track)
+- Make it a checklist they can literally tick off
+
+**CRITICAL - NO FRAMEWORK LABELS:**
+- DO NOT write "Diagnose the bottleneck first:"
+- DO NOT write "State the solution framework:"
+- DO NOT write "Define the metric:"
+- DO NOT write "Deliver numbered steps:"
+- Just write the content naturally as flowing advice
 
 **RESPONSE STYLE:**
-- Lead with the bottleneck diagnosis
+- Lead with the bottleneck diagnosis (but don't label it)
 - No fluff, no theory, no backstory
 - Short sentences. Direct language.
 - Use "you" not "one should"
 - Tactical specifics over general advice
 - Include actual numbers and thresholds
-- End with "What to do today" action list
 - ALWAYS answer the question they actually asked
 
 **FORMATTING - CRITICAL:**
@@ -499,6 +503,14 @@ async def chat(chat_message: ChatMessage):
                     "created_at": datetime.utcnow().isoformat()
                 }).execute()
 
+                # Update conversation updated_at timestamp (for sidebar sorting)
+                try:
+                    supabase.table("conversations").update({
+                        "updated_at": datetime.utcnow().isoformat()
+                    }).eq("conversation_id", conversation_id).execute()
+                except Exception as e:
+                    print(f"Error updating conversation timestamp: {e}")
+
                 # Update conversation title if this is the first message
                 try:
                     msg_count = supabase.table("messages").select("id").eq(
@@ -508,7 +520,9 @@ async def chat(chat_message: ChatMessage):
                     if len(msg_count.data) == 2:  # First user + assistant message
                         # Generate title from first message (first 50 chars)
                         title = chat_message.message[:50] + ("..." if len(chat_message.message) > 50 else "")
-                        update_conversation_title(conversation_id, title)
+                        supabase.table("conversations").update({
+                            "title": title
+                        }).eq("conversation_id", conversation_id).execute()
                 except Exception as e:
                     print(f"Error updating conversation title: {e}")
 
@@ -649,6 +663,14 @@ async def chat_stream(chat_message: ChatMessage):
                         "created_at": datetime.utcnow().isoformat()
                     }).execute()
 
+                    # Update conversation updated_at timestamp (for sidebar sorting)
+                    try:
+                        supabase.table("conversations").update({
+                            "updated_at": datetime.utcnow().isoformat()
+                        }).eq("conversation_id", conversation_id).execute()
+                    except:
+                        pass
+
                     # Update conversation title if this is the first message
                     try:
                         msg_count = supabase.table("messages").select("id").eq(
@@ -657,7 +679,9 @@ async def chat_stream(chat_message: ChatMessage):
 
                         if len(msg_count.data) == 2:  # First user + assistant message
                             title = chat_message.message[:50] + ("..." if len(chat_message.message) > 50 else "")
-                            update_conversation_title(conversation_id, title)
+                            supabase.table("conversations").update({
+                                "title": title
+                            }).eq("conversation_id", conversation_id).execute()
                     except:
                         pass
                 except:
